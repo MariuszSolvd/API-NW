@@ -4,8 +4,11 @@ import com.solvd.utilis.ConfigReader;
 import com.solvd.utilis.models.CreateUser;
 import data.TestDataProvider;
 import io.restassured.http.ContentType;
+import io.restassured.response.Response;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import java.util.List;
 
 import static io.restassured.RestAssured.*;
 import static org.hamcrest.Matchers.equalTo;
@@ -20,14 +23,18 @@ public class ApiTests {
 
     @Test
     public void usersListShouldNotBeEmpty() {
-        when()
-            .get("users")
-        .then()
+        Response response = when()
+            .get("users");
+
+        List<String> ids = response.jsonPath().getList("id", String.class);
+        ids.forEach(TestDataProvider::saveID);
+
+        response.then()
             .statusCode(200)
             .body("size()", greaterThan(0));
     }
 
-    @Test(dataProvider = "userIDs", dataProviderClass = TestDataProvider.class)
+    @Test(dataProvider = "userIDs", dataProviderClass = TestDataProvider.class, dependsOnMethods = "usersListShouldNotBeEmpty")
     public void getUserById(String id) {
         given()
             .pathParam("userID", id)
@@ -46,11 +53,25 @@ public class ApiTests {
             .body(user)
         .when()
             .post("users")
-        .then().log().body()
+        .then()
             .statusCode(201)
             .body("name", equalTo(user.name()))
             .body("email", equalTo(user.email()))
             .body("gender", equalTo(user.gender()))
             .body("status", equalTo(user.status()));
+    }
+
+    @Test(dataProvider = "userIDs", dataProviderClass = TestDataProvider.class)
+    public void changeStatusForUser(String id) {
+        given()
+                .auth().oauth2(ConfigReader.get("token"))
+                .pathParam("userId", id)
+                .body("{\"status\": \"inactive\"}")
+        .when()
+                .put("users/{userId")
+        .then()
+                .statusCode(201)
+                .body("id", equalTo(Integer.parseInt(id)))
+                .body("status", equalTo("inactive"));
     }
 }
